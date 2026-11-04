@@ -565,3 +565,39 @@ table + .inline-form {
     font-size: 10px;
   }
 }
+
+/* CSV import */
+
+.csv-input {
+  display: block;
+  width: 100%;
+  resize: vertical;
+  padding: 10px;
+  border: 1px dashed var(--baseline);
+  border-radius: 6px;
+  background: var(--page);
+  color: var(--ink);
+  font: 13px/1.5 ui-monospace, Consolas, monospace;
+}
+
+.csv-input.dragging {
+  border: 1px solid var(--accent);
+}
+
+.import-actions {
+  margin-top: 10px;
+}
+
+.import-message {
+  margin-top: 10px;
+}
+
+.import-preview {
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

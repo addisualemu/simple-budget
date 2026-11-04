@@ -11,6 +11,7 @@ import {
   todayStr,
   updateExpense,
 } from './budget.js'
+import ExpenseImport from './ExpenseImport.jsx'
 
 const blankForm = () => ({ name: '', amount: '', frequency: 'monthly', startDate: todayStr() })
 
@@ -217,6 +218,8 @@ export default function ExpensesView({ data, setData }) {
           </p>
         </section>
       )}
+
+      <ExpenseImport names={expenses.map((e) => e.name)} setData={setData} />
 
       <Backup data={data} setData={setData} />
     </>
