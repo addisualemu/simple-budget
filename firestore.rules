@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // No sign-in: anyone with the project config can use this one document.
+    match /budgets/main {
+      allow read, write: if true;
+    }
+  }
+}
