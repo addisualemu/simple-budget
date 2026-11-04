@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  addCategory,
   addExpense,
   addExtra,
   addMonths,
@@ -9,8 +10,10 @@ import {
   emptyData,
   history,
   monthSummary,
+  removeCategory,
   removeExpense,
   setActual,
+  toggleExpenseCategory,
   updateExpense,
 } from './budget.js'
 
@@ -135,4 +138,43 @@ test('history spans first known month to now, capped at the limit', () => {
   )
   assert.equal(history({ ...data, expenses: [monthly('2020-01-01')] }, '2026-11').length, 12)
   assert.deepEqual(history(emptyData(), '2026-11'), [])
+})
+
+test('new budgets start with the default categories', () => {
+  assert.deepEqual(
+    emptyData().categories.map((c) => c.name),
+    ['Groceries', 'Education', 'Eat out'],
+  )
+})
+
+test('an expense can be in several categories, and toggling removes one', () => {
+  let data = { ...emptyData(), expenses: [monthly()] } // Saved before categories existed.
+  data = toggleExpenseCategory(data, 'm', 'groceries')
+  data = toggleExpenseCategory(data, 'm', 'eat-out')
+  assert.deepEqual(data.expenses[0].categoryIds, ['groceries', 'eat-out'])
+  data = toggleExpenseCategory(data, 'm', 'groceries')
+  assert.deepEqual(data.expenses[0].categoryIds, ['eat-out'])
+})
+
+test('removing a category takes it off expenses and leaves other categories', () => {
+  let data = addCategory({ ...emptyData(), expenses: [monthly()] }, 'Fun', 'fun')
+  data = toggleExpenseCategory(data, 'm', 'fun')
+  data = toggleExpenseCategory(data, 'm', 'education')
+  data = removeCategory(data, 'fun')
+  assert.equal(
+    data.categories.some((c) => c.id === 'fun'),
+    false,
+  )
+  assert.deepEqual(data.expenses[0].categoryIds, ['education'])
+})
+
+test('editing an expense keeps the chosen categories', () => {
+  let data = { ...emptyData(), expenses: [monthly()] }
+  data = updateExpense(
+    data,
+    'm',
+    { name: 'Rent', amount: 100, startDate: '2026-01-15', categoryIds: ['education'] },
+    '2026-06',
+  )
+  assert.deepEqual(data.expenses[0].categoryIds, ['education'])
 })

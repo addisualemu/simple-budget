@@ -2,7 +2,8 @@
 //
 // Data shape:
 //   expenses: [{ id, name, frequency: 'monthly' | 'biweekly', startDate,
-//                amounts: [{ from: 'YYYY-MM', amount }], endMonth? }]
+//                amounts: [{ from: 'YYYY-MM', amount }], categoryIds?, endMonth? }]
+//   categories: [{ id, name }]
 //   actuals:  { 'YYYY-MM': { [expenseId]: number } }
 //   extras:   { 'YYYY-MM': [{ id, name, amount }] }   // unplanned spending
 
@@ -10,7 +11,19 @@ const DAY_MS = 86400000
 const pad = (n) => String(n).padStart(2, '0')
 const round = (n) => Math.round(n * 100) / 100
 
-export const emptyData = () => ({ version: 1, expenses: [], actuals: {}, extras: {} })
+const DEFAULT_CATEGORIES = [
+  { id: 'groceries', name: 'Groceries' },
+  { id: 'education', name: 'Education' },
+  { id: 'eat-out', name: 'Eat out' },
+]
+
+export const emptyData = () => ({
+  version: 1,
+  expenses: [],
+  categories: DEFAULT_CATEGORIES,
+  actuals: {},
+  extras: {},
+})
 
 export function isValidData(d) {
   return (
@@ -138,26 +151,31 @@ export function history(data, nowYm, limit = 12) {
 
 // ---- updates (each returns new data) ----
 
-export function addExpense(data, { name, amount, frequency, startDate }, id = crypto.randomUUID()) {
+export function addExpense(
+  data,
+  { name, amount, frequency, startDate, categoryIds = [] },
+  id = crypto.randomUUID(),
+) {
   const expense = {
     id,
     name,
     frequency,
     startDate,
+    categoryIds,
     amounts: [{ from: startDate.slice(0, 7), amount }],
   }
   return { ...data, expenses: [...data.expenses, expense] }
 }
 
 /** A new amount applies from nowYm onward, so past months keep their old plan. */
-export function updateExpense(data, id, { name, amount, startDate }, nowYm) {
+export function updateExpense(data, id, { name, amount, startDate, categoryIds }, nowYm) {
   const expenses = data.expenses.map((e) => {
     if (e.id !== id) return e
     const amounts =
       amount === latestAmount(e)
         ? e.amounts
         : [...e.amounts.filter((a) => a.from < nowYm), { from: nowYm, amount }]
-    return { ...e, name, startDate, amounts }
+    return { ...e, name, startDate, amounts, categoryIds }
   })
   return { ...data, expenses }
 }
@@ -182,6 +200,38 @@ export function removeExpense(data, id, nowYm) {
   return {
     ...data,
     expenses: data.expenses.map((e) => (e.id === id ? { ...e, endMonth } : e)),
+  }
+}
+
+export function addCategory(data, name, id = crypto.randomUUID()) {
+  return { ...data, categories: [...data.categories, { id, name }] }
+}
+
+/** Also takes the category off every expense that has it. */
+export function removeCategory(data, id) {
+  return {
+    ...data,
+    categories: data.categories.filter((c) => c.id !== id),
+    expenses: data.expenses.map((e) =>
+      e.categoryIds?.includes(id)
+        ? { ...e, categoryIds: e.categoryIds.filter((c) => c !== id) }
+        : e,
+    ),
+  }
+}
+
+export function toggleCategoryId(categoryIds, id) {
+  return categoryIds.includes(id) ? categoryIds.filter((c) => c !== id) : [...categoryIds, id]
+}
+
+export function toggleExpenseCategory(data, expenseId, categoryId) {
+  return {
+    ...data,
+    expenses: data.expenses.map((e) =>
+      e.id === expenseId
+        ? { ...e, categoryIds: toggleCategoryId(e.categoryIds ?? [], categoryId) }
+        : e,
+    ),
   }
 }
 

@@ -1,19 +1,30 @@
 import { useRef, useState } from 'react'
 import {
+  addCategory,
   addExpense,
   averagePerMonth,
   currentYm,
+  emptyData,
   isValidData,
   latestAmount,
   money,
+  removeCategory,
   removeExpense,
   shortDate,
   todayStr,
+  toggleCategoryId,
+  toggleExpenseCategory,
   updateExpense,
 } from './budget.js'
 import ExpenseImport from './ExpenseImport.jsx'
 
-const blankForm = () => ({ name: '', amount: '', frequency: 'monthly', startDate: todayStr() })
+const blankForm = () => ({
+  name: '',
+  amount: '',
+  frequency: 'monthly',
+  startDate: todayStr(),
+  categoryIds: [],
+})
 
 function scheduleText(expense) {
   if (expense.frequency === 'monthly') {
@@ -22,7 +33,94 @@ function scheduleText(expense) {
   return `Every 2 weeks from ${shortDate(expense.startDate)}, ${expense.startDate.slice(0, 4)}`
 }
 
-function ExpenseForm({ editing, onSave, onCancel }) {
+/** One click adds or removes a category. An expense can have any number of them. */
+function CategoryChips({ categories, selected, label, onToggle }) {
+  return (
+    <div className="chips" role="group" aria-label={label}>
+      {categories.map((category) => {
+        const on = selected.includes(category.id)
+        return (
+          <button
+            key={category.id}
+            type="button"
+            className={on ? 'chip on' : 'chip'}
+            aria-pressed={on}
+            onClick={() => onToggle(category.id)}
+          >
+            {on && '✓ '}
+            {category.name}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function Categories({ data, setData }) {
+  const [name, setName] = useState('')
+  const [error, setError] = useState(null)
+
+  const add = (event) => {
+    event.preventDefault()
+    const clean = name.trim()
+    if (data.categories.some((c) => c.name.toLowerCase() === clean.toLowerCase())) {
+      setError(`${clean} already exists.`)
+      return
+    }
+    setData((d) => addCategory(d, clean))
+    setName('')
+    setError(null)
+  }
+
+  const remove = (category) => {
+    const used = data.expenses.filter((e) => e.categoryIds?.includes(category.id)).length
+    const warning = used ? ` It will be taken off ${used} expense${used === 1 ? '' : 's'}.` : ''
+    if (!window.confirm(`Remove the ${category.name} category?${warning}`)) return
+    setData((d) => removeCategory(d, category.id))
+  }
+
+  return (
+    <section className="card">
+      <h3>Categories</h3>
+      {data.categories.length > 0 && (
+        <div className="chips category-list">
+          {data.categories.map((category) => (
+            <span key={category.id} className="chip static">
+              {category.name}
+              <button
+                className="chip-remove"
+                aria-label={`Remove ${category.name} category`}
+                onClick={() => remove(category)}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <form className="inline-form" onSubmit={add}>
+        <input
+          aria-label="New category name"
+          placeholder="New category"
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value)
+            setError(null)
+          }}
+          required
+        />
+        <button className="button">Add</button>
+      </form>
+      {error && (
+        <p className="over import-message" role="alert">
+          {error}
+        </p>
+      )}
+    </section>
+  )
+}
+
+function ExpenseForm({ editing, categories, onSave, onCancel }) {
   const [form, setForm] = useState(
     editing
       ? {
@@ -30,6 +128,7 @@ function ExpenseForm({ editing, onSave, onCancel }) {
           amount: String(latestAmount(editing)),
           frequency: editing.frequency,
           startDate: editing.startDate,
+          categoryIds: editing.categoryIds ?? [],
         }
       : blankForm(),
   )
@@ -72,6 +171,19 @@ function ExpenseForm({ editing, onSave, onCancel }) {
         First payment date
         <input type="date" value={form.startDate} onChange={set('startDate')} required />
       </label>
+      {categories.length > 0 && (
+        <div className="form-categories">
+          <span>Categories</span>
+          <CategoryChips
+            categories={categories}
+            selected={form.categoryIds}
+            label="Categories for this expense"
+            onToggle={(id) =>
+              setForm({ ...form, categoryIds: toggleCategoryId(form.categoryIds, id) })
+            }
+          />
+        </div>
+      )}
       <div className="form-actions">
         <button className="button">{editing ? 'Save changes' : 'Add expense'}</button>
         {editing && (
@@ -115,7 +227,9 @@ function Backup({ data, setData }) {
       window.alert('That file is not a budget backup.')
       return
     }
-    if (window.confirm('Replace everything in this budget with the backup?')) setData(imported)
+    if (window.confirm('Replace everything in this budget with the backup?')) {
+      setData({ ...emptyData(), ...imported })
+    }
   }
 
   return (
@@ -170,10 +284,13 @@ export default function ExpensesView({ data, setData }) {
         <ExpenseForm
           key={editingId ?? 'new'}
           editing={editing}
+          categories={data.categories}
           onSave={save}
           onCancel={() => setEditingId(null)}
         />
       </section>
+
+      <Categories data={data} setData={setData} />
 
       {expenses.length > 0 && (
         <section className="card">
@@ -191,6 +308,14 @@ export default function ExpensesView({ data, setData }) {
                   <td>
                     <div>{expense.name}</div>
                     <div className="sub">{scheduleText(expense)}</div>
+                    <CategoryChips
+                      categories={data.categories}
+                      selected={expense.categoryIds ?? []}
+                      label={`Categories for ${expense.name}`}
+                      onToggle={(categoryId) =>
+                        setData((d) => toggleExpenseCategory(d, expense.id, categoryId))
+                      }
+                    />
                   </td>
                   <td className="num">{money(latestAmount(expense))}</td>
                   <td className="num actions">
