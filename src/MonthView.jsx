@@ -24,6 +24,38 @@ function Difference({ value }) {
   return <span className={differenceClass(value)}>{differenceLabel(value)}</span>
 }
 
+function LeftOver({ summary, onAddIncome }) {
+  const { rows, enteredCount, income, incomePayments, leftOver } = summary
+  if (incomePayments === 0) {
+    return (
+      <section className="card empty">
+        <p>Add your income to see what is left over each month.</p>
+        <button className="button" onClick={onAddIncome}>
+          Add income
+        </button>
+      </section>
+    )
+  }
+  return (
+    <section className="tiles pair">
+      <div className="tile">
+        <span className="tile-label">Income</span>
+        <span className="tile-value">{money(income)}</span>
+        <span className="tile-note">
+          {incomePayments} payment{incomePayments === 1 ? '' : 's'} this month
+        </span>
+      </div>
+      <div className="tile">
+        <span className="tile-label">Left over</span>
+        <span className={`tile-value ${differenceClass(leftOver)}`}>{money(leftOver)}</span>
+        {enteredCount < rows.length && (
+          <span className="tile-note">If the rest goes as planned</span>
+        )}
+      </div>
+    </section>
+  )
+}
+
 function Totals({ summary }) {
   const { rows, planned, actual, difference, enteredCount, hasEntries } = summary
   const missing = rows.length - enteredCount
@@ -88,7 +120,7 @@ function ExtraForm({ onAdd }) {
   )
 }
 
-export default function MonthView({ data, setData, ym, setYm, onSetUp }) {
+export default function MonthView({ data, setData, ym, setYm, onSetUp, onAddIncome }) {
   const summary = monthSummary(data, ym)
   const today = currentYm()
 
@@ -113,6 +145,7 @@ export default function MonthView({ data, setData, ym, setYm, onSetUp }) {
       </div>
 
       <Totals summary={summary} />
+      <LeftOver summary={summary} onAddIncome={onAddIncome} />
 
       {summary.rows.length === 0 ? (
         <section className="card empty">

@@ -5,6 +5,7 @@ import {
   analyzeExpenses,
   addExpense,
   addExtra,
+  addIncome,
   addMonths,
   amountFor,
   dueDates,
@@ -13,11 +14,13 @@ import {
   monthSummary,
   removeCategory,
   removeExpense,
+  removeIncome,
   renameCategory,
   setActual,
   toggleExpenseCategory,
   UNCATEGORIZED,
   updateExpense,
+  updateIncome,
 } from './budget.js'
 
 const monthly = (startDate = '2026-01-15', amount = 100) => ({
@@ -242,4 +245,70 @@ test('analysis handles a filter that matches nothing', () => {
   assert.equal(result.rows.length, 0)
   assert.equal(result.total, 0)
   assert.equal(result.biggest, null)
+})
+
+test('income follows its schedule, so a three-payment month leaves more', () => {
+  let data = { ...emptyData(), expenses: [monthly('2026-01-15', 1000)] }
+  data = addIncome(
+    data,
+    { name: 'Pay', amount: 800, frequency: 'biweekly', startDate: '2026-01-02' },
+    'p',
+  )
+  const january = monthSummary(data, '2026-01')
+  assert.equal(january.income, 2400)
+  assert.equal(january.incomePayments, 3)
+  assert.equal(january.leftOver, 1400)
+  assert.equal(monthSummary(data, '2026-02').leftOver, 600)
+})
+
+test('left over uses actuals where entered and the plan for the rest', () => {
+  let data = { ...emptyData(), expenses: [monthly('2026-01-15', 100), biweekly('2026-01-02', 50)] }
+  data = addIncome(
+    data,
+    { name: 'Pay', amount: 1000, frequency: 'monthly', startDate: '2026-01-01' },
+    'p',
+  )
+  assert.equal(monthSummary(data, '2026-01').leftOver, 750)
+  data = setActual(data, '2026-01', 'm', 130)
+  data = addExtra(data, '2026-01', { name: 'Tire', amount: 20 }, 'x')
+  assert.equal(monthSummary(data, '2026-01').leftOver, 700)
+})
+
+test('a month with no income has nothing paid and a negative left over', () => {
+  const summary = monthSummary({ ...emptyData(), expenses: [monthly()] }, '2026-01')
+  assert.equal(summary.incomePayments, 0)
+  assert.equal(summary.leftOver, -100)
+})
+
+test('changing income keeps earlier months at the old amount', () => {
+  let data = addIncome(
+    emptyData(),
+    { name: 'Pay', amount: 1000, frequency: 'monthly', startDate: '2026-01-01' },
+    'p',
+  )
+  data = updateIncome(data, 'p', { name: 'Pay', amount: 1200, startDate: '2026-01-01' }, '2026-06')
+  assert.equal(monthSummary(data, '2026-05').income, 1000)
+  assert.equal(monthSummary(data, '2026-06').income, 1200)
+})
+
+test('removing older income keeps this month; new income is deleted outright', () => {
+  let data = addIncome(
+    emptyData(),
+    { name: 'Pay', amount: 1000, frequency: 'monthly', startDate: '2026-01-01' },
+    'p',
+  )
+  data = removeIncome(data, 'p', '2026-06')
+  assert.equal(monthSummary(data, '2026-06').income, 1000)
+  assert.equal(monthSummary(data, '2026-07').income, 0)
+
+  data = addIncome(
+    data,
+    { name: 'Side', amount: 50, frequency: 'monthly', startDate: '2026-06-10' },
+    's',
+  )
+  data = removeIncome(data, 's', '2026-06')
+  assert.deepEqual(
+    data.incomes.map((i) => i.id),
+    ['p'],
+  )
 })

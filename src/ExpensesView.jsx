@@ -153,7 +153,14 @@ function Categories({ data, setData }) {
   )
 }
 
-function ExpenseForm({ editing, categories, onSave, onCancel }) {
+export function ExpenseForm({
+  editing,
+  categories,
+  onSave,
+  onCancel,
+  noun = 'expense',
+  namePlaceholder = 'Rent',
+}) {
   const [form, setForm] = useState(
     editing
       ? {
@@ -179,7 +186,7 @@ function ExpenseForm({ editing, categories, onSave, onCancel }) {
     <form className="expense-form" onSubmit={submit}>
       <label>
         Name
-        <input value={form.name} onChange={set('name')} placeholder="Rent" required />
+        <input value={form.name} onChange={set('name')} placeholder={namePlaceholder} required />
       </label>
       <label>
         How often
@@ -218,7 +225,7 @@ function ExpenseForm({ editing, categories, onSave, onCancel }) {
         </div>
       )}
       <div className="form-actions">
-        <button className="button">{editing ? 'Save changes' : 'Add expense'}</button>
+        <button className="button">{editing ? 'Save changes' : `Add ${noun}`}</button>
         {editing && (
           <button type="button" className="link" onClick={onCancel}>
             Cancel

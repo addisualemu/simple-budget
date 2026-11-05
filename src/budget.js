@@ -3,6 +3,7 @@
 // Data shape:
 //   expenses: [{ id, name, frequency: 'monthly' | 'biweekly', startDate,
 //                amounts: [{ from: 'YYYY-MM', amount }], categoryIds?, endMonth? }]
+//   incomes:  [{ id, name, frequency, startDate, amounts, endMonth? }]   // same schedule as expenses
 //   categories: [{ id, name }]
 //   actuals:  { 'YYYY-MM': { [expenseId]: number } }
 //   extras:   { 'YYYY-MM': [{ id, name, amount }] }   // unplanned spending
@@ -20,6 +21,7 @@ const DEFAULT_CATEGORIES = [
 export const emptyData = () => ({
   version: 1,
   expenses: [],
+  incomes: [],
   categories: DEFAULT_CATEGORIES,
   actuals: {},
   extras: {},
@@ -127,14 +129,25 @@ export function monthSummary(data, ym) {
   const extras = data.extras[ym] ?? []
   const extrasTotal = extras.reduce((sum, x) => sum + x.amount, 0)
   const entered = rows.filter((r) => r.actual !== null)
+  const planned = round(rows.reduce((sum, r) => sum + r.planned, 0))
+  const difference = round(entered.reduce((sum, r) => sum + r.difference, 0) - extrasTotal)
+
+  const paid = data.incomes
+    .map((income) => ({ income, count: dueDates(income, ym).length }))
+    .filter((p) => p.count > 0)
+  const income = round(paid.reduce((sum, p) => sum + amountFor(p.income, ym) * p.count, 0))
 
   return {
     ym,
     rows,
     extras,
-    planned: round(rows.reduce((sum, r) => sum + r.planned, 0)),
+    planned,
     actual: round(entered.reduce((sum, r) => sum + r.actual, 0) + extrasTotal),
-    difference: round(entered.reduce((sum, r) => sum + r.difference, 0) - extrasTotal),
+    difference,
+    income,
+    incomePayments: paid.reduce((sum, p) => sum + p.count, 0),
+    // Rows with no actual yet are assumed to come in as planned.
+    leftOver: round(income - planned + difference),
     enteredCount: entered.length,
     hasEntries: entered.length > 0 || extras.length > 0,
   }
@@ -226,15 +239,17 @@ export function addExpense(
 }
 
 /** A new amount applies from nowYm onward, so past months keep their old plan. */
+function amountsWith(item, amount, nowYm) {
+  if (amount === latestAmount(item)) return item.amounts
+  return [...item.amounts.filter((a) => a.from < nowYm), { from: nowYm, amount }]
+}
+
 export function updateExpense(data, id, { name, amount, startDate, categoryIds }, nowYm) {
-  const expenses = data.expenses.map((e) => {
-    if (e.id !== id) return e
-    const amounts =
-      amount === latestAmount(e)
-        ? e.amounts
-        : [...e.amounts.filter((a) => a.from < nowYm), { from: nowYm, amount }]
-    return { ...e, name, startDate, amounts, categoryIds }
-  })
+  const expenses = data.expenses.map((e) =>
+    e.id === id
+      ? { ...e, name, startDate, amounts: amountsWith(e, amount, nowYm), categoryIds }
+      : e,
+  )
   return { ...data, expenses }
 }
 
@@ -258,6 +273,36 @@ export function removeExpense(data, id, nowYm) {
   return {
     ...data,
     expenses: data.expenses.map((e) => (e.id === id ? { ...e, endMonth } : e)),
+  }
+}
+
+export function addIncome(data, { name, amount, frequency, startDate }, id = crypto.randomUUID()) {
+  const income = {
+    id,
+    name,
+    frequency,
+    startDate,
+    amounts: [{ from: startDate.slice(0, 7), amount }],
+  }
+  return { ...data, incomes: [...data.incomes, income] }
+}
+
+export function updateIncome(data, id, { name, amount, startDate }, nowYm) {
+  const incomes = data.incomes.map((i) =>
+    i.id === id ? { ...i, name, startDate, amounts: amountsWith(i, amount, nowYm) } : i,
+  )
+  return { ...data, incomes }
+}
+
+/** Older income stops after this month, since this month's may already be paid. */
+export function removeIncome(data, id, nowYm) {
+  const income = data.incomes.find((i) => i.id === id)
+  if (income.startDate.slice(0, 7) >= nowYm) {
+    return { ...data, incomes: data.incomes.filter((i) => i.id !== id) }
+  }
+  return {
+    ...data,
+    incomes: data.incomes.map((i) => (i.id === id ? { ...i, endMonth: nowYm } : i)),
   }
 }
 

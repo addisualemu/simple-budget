@@ -3,10 +3,11 @@ import AnalysisView from './AnalysisView.jsx'
 import { currentYm } from './budget.js'
 import ExpensesView from './ExpensesView.jsx'
 import HistoryView from './HistoryView.jsx'
+import IncomeView from './IncomeView.jsx'
 import MonthView from './MonthView.jsx'
 import { useBudgetData } from './useBudgetData.js'
 
-const TABS = ['Month', 'Expenses', 'Analysis', 'History']
+const TABS = ['Month', 'Expenses', 'Income', 'Analysis', 'History']
 
 const SAVE_LABELS = { saving: 'Saving…', saved: 'Saved', error: 'Not saved' }
 
@@ -54,9 +55,11 @@ export default function App() {
               ym={ym}
               setYm={setYm}
               onSetUp={() => setTab('Expenses')}
+              onAddIncome={() => setTab('Income')}
             />
           )}
           {tab === 'Expenses' && <ExpensesView data={data} setData={setData} />}
+          {tab === 'Income' && <IncomeView data={data} setData={setData} />}
           {tab === 'Analysis' && <AnalysisView data={data} />}
           {tab === 'History' && <HistoryView data={data} onOpenMonth={openMonth} />}
         </main>
