@@ -94,6 +94,13 @@ export const latestAmount = (expense) => expense.amounts[expense.amounts.length 
 export const averagePerMonth = (expense) =>
   expense.frequency === 'monthly' ? latestAmount(expense) : (latestAmount(expense) * 26) / 12
 
+export function scheduleText(expense) {
+  if (expense.frequency === 'monthly') {
+    return `Monthly on day ${Number(expense.startDate.slice(8, 10))}`
+  }
+  return `Every 2 weeks from ${shortDate(expense.startDate)}, ${expense.startDate.slice(0, 4)}`
+}
+
 // ---- summaries ----
 
 /**
@@ -147,6 +154,57 @@ export function history(data, nowYm, limit = 12) {
   const months = []
   for (; ym <= nowYm; ym = addMonths(ym, 1)) months.push(monthSummary(data, ym))
   return months
+}
+
+// ---- analysis ----
+
+export const UNCATEGORIZED = 'uncategorized'
+
+export const activeExpenses = (data) => data.expenses.filter((e) => !e.endMonth)
+
+function inCategories(expense, selected) {
+  if (selected.length === 0) return true
+  const ids = expense.categoryIds ?? []
+  if (ids.length === 0) return selected.includes(UNCATEGORIZED)
+  return ids.some((id) => selected.includes(id))
+}
+
+/**
+ * Totals for active expenses in any of the selected categories, biggest first.
+ * Nothing selected means everything. Each expense counts once, however many of
+ * the selected categories it is in. Unplanned spending has no category, so it is
+ * left out of `month`.
+ */
+export function analyzeExpenses(data, selected, nowYm) {
+  const names = new Map(data.categories.map((c) => [c.id, c.name]))
+  const sumPerMonth = (expenses) => expenses.reduce((sum, e) => sum + averagePerMonth(e), 0)
+
+  const active = activeExpenses(data)
+  const matching = active.filter((e) => inCategories(e, selected))
+  const rows = matching
+    .map((expense) => ({
+      expense,
+      perMonth: round(averagePerMonth(expense)),
+      categoryNames: (expense.categoryIds ?? []).map((id) => names.get(id)).filter(Boolean),
+    }))
+    .sort((a, b) => b.perMonth - a.perMonth || a.expense.name.localeCompare(b.expense.name))
+
+  const monthRows = monthSummary(data, nowYm).rows.filter((r) => inCategories(r.expense, selected))
+  const entered = monthRows.filter((r) => r.actual !== null)
+
+  return {
+    rows,
+    total: round(sumPerMonth(matching)),
+    overall: round(sumPerMonth(active)),
+    perYear: round(sumPerMonth(matching) * 12),
+    biggest: rows[0] ?? null,
+    month: {
+      planned: round(monthRows.reduce((sum, r) => sum + r.planned, 0)),
+      actual: round(entered.reduce((sum, r) => sum + r.actual, 0)),
+      difference: round(entered.reduce((sum, r) => sum + r.difference, 0)),
+      entered: entered.length,
+    },
+  }
 }
 
 // ---- updates (each returns new data) ----
@@ -205,6 +263,14 @@ export function removeExpense(data, id, nowYm) {
 
 export function addCategory(data, name, id = crypto.randomUUID()) {
   return { ...data, categories: [...data.categories, { id, name }] }
+}
+
+/** Expenses point at the category's id, so they keep it through a rename. */
+export function renameCategory(data, id, name) {
+  return {
+    ...data,
+    categories: data.categories.map((c) => (c.id === id ? { ...c, name } : c)),
+  }
 }
 
 /** Also takes the category off every expense that has it. */

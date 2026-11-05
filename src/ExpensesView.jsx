@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import {
+  activeExpenses,
   addCategory,
   addExpense,
   averagePerMonth,
@@ -10,12 +11,14 @@ import {
   money,
   removeCategory,
   removeExpense,
-  shortDate,
+  renameCategory,
+  scheduleText,
   todayStr,
   toggleCategoryId,
   toggleExpenseCategory,
   updateExpense,
 } from './budget.js'
+import CategoryChips from './CategoryChips.jsx'
 import ExpenseImport from './ExpenseImport.jsx'
 
 const blankForm = () => ({
@@ -26,50 +29,50 @@ const blankForm = () => ({
   categoryIds: [],
 })
 
-function scheduleText(expense) {
-  if (expense.frequency === 'monthly') {
-    return `Monthly on day ${Number(expense.startDate.slice(8, 10))}`
-  }
-  return `Every 2 weeks from ${shortDate(expense.startDate)}, ${expense.startDate.slice(0, 4)}`
-}
-
-/** One click adds or removes a category. An expense can have any number of them. */
-function CategoryChips({ categories, selected, label, onToggle }) {
-  return (
-    <div className="chips" role="group" aria-label={label}>
-      {categories.map((category) => {
-        const on = selected.includes(category.id)
-        return (
-          <button
-            key={category.id}
-            type="button"
-            className={on ? 'chip on' : 'chip'}
-            aria-pressed={on}
-            onClick={() => onToggle(category.id)}
-          >
-            {on && '✓ '}
-            {category.name}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
 function Categories({ data, setData }) {
   const [name, setName] = useState('')
   const [error, setError] = useState(null)
+  const [renamingId, setRenamingId] = useState(null)
+  const [draft, setDraft] = useState('')
+  const cancelled = useRef(false)
+
+  const isTaken = (text, exceptId) => {
+    const taken = data.categories.some(
+      (c) => c.id !== exceptId && c.name.toLowerCase() === text.toLowerCase(),
+    )
+    setError(taken ? `${text} already exists.` : null)
+    return taken
+  }
 
   const add = (event) => {
     event.preventDefault()
     const clean = name.trim()
-    if (data.categories.some((c) => c.name.toLowerCase() === clean.toLowerCase())) {
-      setError(`${clean} already exists.`)
-      return
-    }
+    if (isTaken(clean)) return
     setData((d) => addCategory(d, clean))
     setName('')
+  }
+
+  const startRename = (category) => {
+    cancelled.current = false
+    setRenamingId(category.id)
+    setDraft(category.name)
     setError(null)
+  }
+
+  const stopRename = () => {
+    setRenamingId(null)
+    setError(null)
+  }
+
+  const finishRename = (category) => {
+    const clean = draft.trim()
+    if (cancelled.current || !clean || clean === category.name) {
+      stopRename()
+      return
+    }
+    if (isTaken(clean, category.id)) return
+    setData((d) => renameCategory(d, category.id, clean))
+    stopRename()
   }
 
   const remove = (category) => {
@@ -82,11 +85,41 @@ function Categories({ data, setData }) {
   return (
     <section className="card">
       <h3>Categories</h3>
+      {data.categories.length > 0 && <p className="sub">Click a name to rename it.</p>}
       {data.categories.length > 0 && (
         <div className="chips category-list">
           {data.categories.map((category) => (
             <span key={category.id} className="chip static">
-              {category.name}
+              {renamingId === category.id ? (
+                <input
+                  aria-label={`New name for ${category.name}`}
+                  className="chip-input"
+                  size={Math.max(draft.length, 4)}
+                  autoFocus
+                  value={draft}
+                  onChange={(e) => {
+                    setDraft(e.target.value)
+                    setError(null)
+                  }}
+                  onBlur={() => finishRename(category)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') finishRename(category)
+                    if (e.key === 'Escape') {
+                      cancelled.current = true
+                      stopRename()
+                    }
+                  }}
+                />
+              ) : (
+                <button
+                  className="chip-name"
+                  aria-label={`Rename ${category.name}`}
+                  title="Rename"
+                  onClick={() => startRename(category)}
+                >
+                  {category.name}
+                </button>
+              )}
               <button
                 className="chip-remove"
                 aria-label={`Remove ${category.name} category`}
@@ -255,9 +288,7 @@ export default function ExpensesView({ data, setData }) {
   const [editingId, setEditingId] = useState(null)
   const nowYm = currentYm()
 
-  const expenses = data.expenses
-    .filter((e) => !e.endMonth)
-    .sort((a, b) => a.frequency.localeCompare(b.frequency) * -1 || a.name.localeCompare(b.name))
+  const expenses = activeExpenses(data).sort((a, b) => a.frequency.localeCompare(b.frequency) * -1 || a.name.localeCompare(b.name))
   const editing = expenses.find((e) => e.id === editingId)
   const average = expenses.reduce((sum, e) => sum + averagePerMonth(e), 0)
 

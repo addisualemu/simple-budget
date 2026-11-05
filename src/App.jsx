@@ -1,11 +1,12 @@
 import { useState } from 'react'
+import AnalysisView from './AnalysisView.jsx'
 import { currentYm } from './budget.js'
 import ExpensesView from './ExpensesView.jsx'
 import HistoryView from './HistoryView.jsx'
 import MonthView from './MonthView.jsx'
 import { useBudgetData } from './useBudgetData.js'
 
-const TABS = ['Month', 'Expenses', 'History']
+const TABS = ['Month', 'Expenses', 'Analysis', 'History']
 
 const SAVE_LABELS = { saving: 'Saving…', saved: 'Saved', error: 'Not saved' }
 
@@ -56,6 +57,7 @@ export default function App() {
             />
           )}
           {tab === 'Expenses' && <ExpensesView data={data} setData={setData} />}
+          {tab === 'Analysis' && <AnalysisView data={data} />}
           {tab === 'History' && <HistoryView data={data} onOpenMonth={openMonth} />}
         </main>
       )}

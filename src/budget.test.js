@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   addCategory,
+  analyzeExpenses,
   addExpense,
   addExtra,
   addMonths,
@@ -12,8 +13,10 @@ import {
   monthSummary,
   removeCategory,
   removeExpense,
+  renameCategory,
   setActual,
   toggleExpenseCategory,
+  UNCATEGORIZED,
   updateExpense,
 } from './budget.js'
 
@@ -168,6 +171,17 @@ test('removing a category takes it off expenses and leaves other categories', ()
   assert.deepEqual(data.expenses[0].categoryIds, ['education'])
 })
 
+test('renaming a category keeps it on its expenses and leaves others alone', () => {
+  let data = { ...emptyData(), expenses: [monthly()] }
+  data = toggleExpenseCategory(data, 'm', 'eat-out')
+  data = renameCategory(data, 'eat-out', 'Restaurants')
+  assert.deepEqual(
+    data.categories.map((c) => c.name),
+    ['Groceries', 'Education', 'Restaurants'],
+  )
+  assert.deepEqual(data.expenses[0].categoryIds, ['eat-out'])
+})
+
 test('editing an expense keeps the chosen categories', () => {
   let data = { ...emptyData(), expenses: [monthly()] }
   data = updateExpense(
@@ -177,4 +191,55 @@ test('editing an expense keeps the chosen categories', () => {
     '2026-06',
   )
   assert.deepEqual(data.expenses[0].categoryIds, ['education'])
+})
+
+test('analysis filters by any selected category and counts each expense once', () => {
+  const rent = { ...monthly(), categoryIds: ['a', 'b'] }
+  const daycare = { ...biweekly(), categoryIds: ['b'] }
+  const gym = { ...monthly('2026-01-01', 30), id: 'g', name: 'Gym' }
+  const data = { ...emptyData(), expenses: [gym, rent, daycare] }
+
+  const all = analyzeExpenses(data, [], '2026-02')
+  assert.equal(all.rows.length, 3)
+  assert.equal(all.total, 238.33)
+  assert.equal(all.overall, 238.33)
+
+  const both = analyzeExpenses(data, ['a', 'b'], '2026-02')
+  assert.deepEqual(
+    both.rows.map((r) => r.expense.name),
+    ['Daycare', 'Rent'],
+  )
+  assert.equal(both.total, 208.33)
+  assert.equal(both.perYear, 2500)
+  assert.equal(both.overall, 238.33)
+  assert.equal(both.biggest.expense.name, 'Daycare')
+})
+
+test('the uncategorized filter finds expenses with no categories', () => {
+  const rent = { ...monthly(), categoryIds: ['a'] }
+  const gym = { ...monthly('2026-01-01', 30), id: 'g', name: 'Gym' }
+  const data = { ...emptyData(), expenses: [rent, gym] }
+  const names = (ids) => analyzeExpenses(data, ids, '2026-02').rows.map((r) => r.expense.name)
+  assert.deepEqual(names([UNCATEGORIZED]), ['Gym'])
+  assert.deepEqual(names([UNCATEGORIZED, 'a']), ['Rent', 'Gym'])
+})
+
+test('analysis skips stopped expenses and reports this month for the filter', () => {
+  const rent = { ...monthly(), categoryIds: ['a'] }
+  const gym = { ...monthly('2026-01-01', 30), id: 'g', name: 'Gym', categoryIds: ['b'] }
+  const old = { ...monthly('2026-01-01', 500), id: 'o', name: 'Old', endMonth: '2026-01' }
+  let data = { ...emptyData(), expenses: [rent, gym, old] }
+  data = setActual(data, '2026-02', 'm', 120)
+  data = setActual(data, '2026-02', 'g', 10)
+
+  const result = analyzeExpenses(data, ['a'], '2026-02')
+  assert.equal(result.overall, 130)
+  assert.deepEqual(result.month, { planned: 100, actual: 120, difference: -20, entered: 1 })
+})
+
+test('analysis handles a filter that matches nothing', () => {
+  const result = analyzeExpenses({ ...emptyData(), expenses: [monthly()] }, ['nope'], '2026-02')
+  assert.equal(result.rows.length, 0)
+  assert.equal(result.total, 0)
+  assert.equal(result.biggest, null)
 })
