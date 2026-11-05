@@ -11,6 +11,7 @@ import {
   dueDates,
   emptyData,
   history,
+  markDueAsPlanned,
   monthSummary,
   removeCategory,
   removeExpense,
@@ -311,4 +312,25 @@ test('removing older income keeps this month; new income is deleted outright', (
     data.incomes.map((i) => i.id),
     ['p'],
   )
+})
+
+test('marking due as planned skips entered rows and payments still to come', () => {
+  const later = { ...monthly('2026-01-25', 40), id: 'l', name: 'Later' }
+  let data = { ...emptyData(), expenses: [monthly('2026-01-15', 100), biweekly('2026-01-02', 50), later] }
+  data = setActual(data, '2026-02', 'b', 90)
+
+  data = markDueAsPlanned(data, '2026-02', '2026-02-20')
+  assert.deepEqual(data.actuals['2026-02'], { b: 90, m: 100 })
+})
+
+test('a bi-weekly row is due only after its last payment in the month', () => {
+  const data = { ...emptyData(), expenses: [biweekly('2026-01-02', 50)] }
+  assert.equal(markDueAsPlanned(data, '2026-02', '2026-02-20').actuals['2026-02'], undefined)
+  assert.deepEqual(markDueAsPlanned(data, '2026-02', '2026-02-27').actuals['2026-02'], { b: 100 })
+})
+
+test('past months are fully due and future months have nothing due', () => {
+  const data = { ...emptyData(), expenses: [monthly('2026-01-15', 100)] }
+  assert.deepEqual(markDueAsPlanned(data, '2026-01', '2026-03-01').actuals['2026-01'], { m: 100 })
+  assert.equal(markDueAsPlanned(data, '2026-04', '2026-03-01').actuals['2026-04'], undefined)
 })

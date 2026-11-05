@@ -4,12 +4,15 @@ import {
   addMonths,
   currentYm,
   differenceLabel,
+  dueRows,
+  markDueAsPlanned,
   money,
   monthLabel,
   monthSummary,
   removeExtra,
   setActual,
   shortDate,
+  todayStr,
 } from './budget.js'
 
 const differenceClass = (n) => (n > 0 ? 'under' : n < 0 ? 'over' : '')
@@ -123,9 +126,16 @@ function ExtraForm({ onAdd }) {
 export default function MonthView({ data, setData, ym, setYm, onSetUp, onAddIncome }) {
   const summary = monthSummary(data, ym)
   const today = currentYm()
+  const dueCount = dueRows(summary, todayStr()).length
 
   const enterActual = (id, text) =>
     setData((d) => setActual(d, ym, id, text === '' ? null : Number(text)))
+
+  const markDue = () => {
+    const expenses = `${dueCount} expense${dueCount === 1 ? '' : 's'}`
+    if (!window.confirm(`Enter the planned amount for ${expenses}?`)) return
+    setData((d) => markDueAsPlanned(d, ym, todayStr()))
+  }
 
   return (
     <>
@@ -162,6 +172,13 @@ export default function MonthView({ data, setData, ym, setYm, onSetUp, onAddInco
         </section>
       ) : (
         <section className="card">
+          {dueCount > 0 && (
+            <div className="form-actions">
+              <button className="button secondary" onClick={markDue}>
+                Mark {dueCount} due as planned
+              </button>
+            </div>
+          )}
           <table>
             <thead>
               <tr>

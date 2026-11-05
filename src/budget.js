@@ -354,6 +354,18 @@ export function setActual(data, ym, id, value) {
   return { ...data, actuals: { ...data.actuals, [ym]: month } }
 }
 
+/** Rows with no actual whose last payment date has passed. */
+export const dueRows = (summary, today) =>
+  summary.rows.filter((r) => r.actual === null && r.dates[r.dates.length - 1] <= today)
+
+/** Enters the planned amount for every row that is due and has no actual yet. */
+export function markDueAsPlanned(data, ym, today) {
+  return dueRows(monthSummary(data, ym), today).reduce(
+    (next, row) => setActual(next, ym, row.expense.id, row.planned),
+    data,
+  )
+}
+
 export function addExtra(data, ym, { name, amount }, id = crypto.randomUUID()) {
   const extras = [...(data.extras[ym] ?? []), { id, name, amount }]
   return { ...data, extras: { ...data.extras, [ym]: extras } }
