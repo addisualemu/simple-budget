@@ -8,6 +8,7 @@ import {
   addIncome,
   addMonths,
   amountFor,
+  categoryBreakdown,
   dueDates,
   emptyData,
   history,
@@ -19,6 +20,7 @@ import {
   renameCategory,
   setActual,
   toggleExpenseCategory,
+  toggleExtraCategory,
   UNCATEGORIZED,
   updateExpense,
   updateIncome,
@@ -333,4 +335,53 @@ test('past months are fully due and future months have nothing due', () => {
   const data = { ...emptyData(), expenses: [monthly('2026-01-15', 100)] }
   assert.deepEqual(markDueAsPlanned(data, '2026-01', '2026-03-01').actuals['2026-01'], { m: 100 })
   assert.equal(markDueAsPlanned(data, '2026-04', '2026-03-01').actuals['2026-04'], undefined)
+})
+
+test('category breakdown compares planned and actual, with unplanned in its category', () => {
+  const rent = { ...monthly('2026-01-15', 100), categoryIds: ['a'] }
+  const daycare = { ...biweekly('2026-01-02', 50), categoryIds: ['b'] }
+  let data = addCategory(addCategory({ ...emptyData(), categories: [] }, 'A', 'a'), 'B', 'b')
+  data = { ...data, expenses: [rent, daycare] }
+  data = setActual(data, '2026-02', 'm', 120)
+  data = addExtra(data, '2026-02', { name: 'Tire', amount: 15, categoryIds: ['a'] }, 'x')
+
+  assert.deepEqual(categoryBreakdown(data, '2026-02'), [
+    { id: 'a', name: 'A', planned: 100, actual: 135, difference: -35, entered: 2 },
+    { id: 'b', name: 'B', planned: 100, actual: 0, difference: 0, entered: 0 },
+  ])
+})
+
+test('category breakdown counts shared expenses in both and shows uncategorized', () => {
+  const shared = { ...monthly('2026-01-15', 100), categoryIds: ['a', 'b'] }
+  let data = addCategory(addCategory({ ...emptyData(), categories: [] }, 'A', 'a'), 'B', 'b')
+  data = { ...data, expenses: [shared] }
+  data = addExtra(data, '2026-02', { name: 'Old tire', amount: 15 }, 'x')
+  delete data.extras['2026-02'][0].categoryIds // Saved before unplanned had categories.
+
+  assert.deepEqual(
+    categoryBreakdown(data, '2026-02').map((r) => [r.name, r.planned, r.actual]),
+    [
+      ['A', 100, 0],
+      ['B', 100, 0],
+      ['Uncategorized', 0, 15],
+    ],
+  )
+})
+
+test('analysis month includes unplanned spending in the selected categories', () => {
+  let data = { ...emptyData(), expenses: [{ ...monthly(), categoryIds: ['a'] }] }
+  data = addExtra(data, '2026-02', { name: 'Tire', amount: 15, categoryIds: ['a'] }, 'x')
+  data = addExtra(data, '2026-02', { name: 'Gift', amount: 5, categoryIds: ['b'] }, 'y')
+  const { month } = analyzeExpenses(data, ['a'], '2026-02')
+  assert.deepEqual(month, { planned: 100, actual: 15, difference: -15, entered: 1 })
+  assert.equal(analyzeExpenses(data, [], '2026-02').month.actual, 20)
+})
+
+test('unplanned spending can change category, and removing one takes it off', () => {
+  let data = addExtra(emptyData(), '2026-02', { name: 'Tire', amount: 15 }, 'x')
+  data = toggleExtraCategory(data, '2026-02', 'x', 'education')
+  data = toggleExtraCategory(data, '2026-02', 'x', 'groceries')
+  assert.deepEqual(data.extras['2026-02'][0].categoryIds, ['education', 'groceries'])
+  data = removeCategory(data, 'education')
+  assert.deepEqual(data.extras['2026-02'][0].categoryIds, ['groceries'])
 })

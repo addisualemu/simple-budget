@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import {
+  addMonths,
   analyzeExpenses,
+  categoryBreakdown,
   currentYm,
   differenceLabel,
   latestAmount,
   money,
+  monthLabel,
   scheduleText,
   toggleCategoryId,
   UNCATEGORIZED,
@@ -49,6 +52,74 @@ function Dashboard({ analysis, filtered }) {
   )
 }
 
+function PlannedVsActual({ data, selected }) {
+  const [ym, setYm] = useState(currentYm)
+  const rows = categoryBreakdown(data, ym).filter(
+    (row) => selected.length === 0 || selected.includes(row.id),
+  )
+
+  return (
+    <section className="card">
+      <div className="card-head">
+        <h3>Planned vs actual</h3>
+        <button
+          className="icon-button"
+          aria-label="Previous month"
+          onClick={() => setYm(addMonths(ym, -1))}
+        >
+          ‹
+        </button>
+        <span>{monthLabel(ym)}</span>
+        <button
+          className="icon-button"
+          aria-label="Next month"
+          onClick={() => setYm(addMonths(ym, 1))}
+        >
+          ›
+        </button>
+      </div>
+      {rows.length === 0 ? (
+        <p className="sub">Nothing planned or spent here this month.</p>
+      ) : (
+        <>
+          <table>
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th className="num">Planned</th>
+                <th className="num">Actual</th>
+                <th className="num">Difference</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td>{row.name}</td>
+                  <td className="num">{money(row.planned)}</td>
+                  <td className="num">{row.entered > 0 ? money(row.actual) : '—'}</td>
+                  <td className="num">
+                    {row.entered > 0 ? (
+                      <span className={row.difference > 0 ? 'under' : row.difference < 0 ? 'over' : ''}>
+                        {differenceLabel(row.difference)}
+                      </span>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="sub">
+            Difference only counts what you have entered, plus unplanned spending. Anything in two
+            categories counts in both.
+          </p>
+        </>
+      )}
+    </section>
+  )
+}
+
 export default function AnalysisView({ data }) {
   const [selected, setSelected] = useState([])
   const analysis = analyzeExpenses(data, selected, currentYm())
@@ -73,6 +144,8 @@ export default function AnalysisView({ data }) {
       </div>
 
       <Dashboard analysis={analysis} filtered={selected.length > 0} />
+
+      <PlannedVsActual data={data} selected={selected} />
 
       {analysis.rows.length === 0 ? (
         <section className="card empty">

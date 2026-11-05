@@ -13,7 +13,10 @@ import {
   setActual,
   shortDate,
   todayStr,
+  toggleCategoryId,
+  toggleExtraCategory,
 } from './budget.js'
+import CategoryChips from './CategoryChips.jsx'
 
 const differenceClass = (n) => (n > 0 ? 'under' : n < 0 ? 'over' : '')
 
@@ -88,37 +91,47 @@ function Totals({ summary }) {
   )
 }
 
-function ExtraForm({ onAdd }) {
+function ExtraForm({ categories, onAdd }) {
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
+  const [categoryIds, setCategoryIds] = useState([])
 
   const submit = (event) => {
     event.preventDefault()
-    onAdd({ name: name.trim(), amount: Number(amount) })
+    onAdd({ name: name.trim(), amount: Number(amount), categoryIds })
     setName('')
     setAmount('')
+    setCategoryIds([])
   }
 
   return (
-    <form className="inline-form" onSubmit={submit}>
-      <input
-        aria-label="Unplanned expense name"
-        placeholder="What was it?"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        required
+    <form className="extra-form" onSubmit={submit}>
+      <div className="inline-form">
+        <input
+          aria-label="Unplanned expense name"
+          placeholder="What was it?"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
+        <input
+          aria-label="Unplanned expense amount"
+          className="amount"
+          type="number"
+          step="0.01"
+          placeholder="0.00"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          required
+        />
+        <button className="button">Add</button>
+      </div>
+      <CategoryChips
+        categories={categories}
+        selected={categoryIds}
+        label="Categories for this unplanned expense"
+        onToggle={(id) => setCategoryIds((ids) => toggleCategoryId(ids, id))}
       />
-      <input
-        aria-label="Unplanned expense amount"
-        className="amount"
-        type="number"
-        step="0.01"
-        placeholder="0.00"
-        value={amount}
-        onChange={(e) => setAmount(e.target.value)}
-        required
-      />
-      <button className="button">Add</button>
     </form>
   )
 }
@@ -231,7 +244,17 @@ export default function MonthView({ data, setData, ym, setYm, onSetUp, onAddInco
             <tbody>
               {summary.extras.map((extra) => (
                 <tr key={extra.id}>
-                  <td>{extra.name}</td>
+                  <td>
+                    <div>{extra.name}</div>
+                    <CategoryChips
+                      categories={data.categories}
+                      selected={extra.categoryIds ?? []}
+                      label={`Categories for ${extra.name}`}
+                      onToggle={(categoryId) =>
+                        setData((d) => toggleExtraCategory(d, ym, extra.id, categoryId))
+                      }
+                    />
+                  </td>
                   <td className="num">{money(extra.amount)}</td>
                   <td className="num actions">
                     <button
@@ -246,7 +269,10 @@ export default function MonthView({ data, setData, ym, setYm, onSetUp, onAddInco
             </tbody>
           </table>
         )}
-        <ExtraForm onAdd={(extra) => setData((d) => addExtra(d, ym, extra))} />
+        <ExtraForm
+          categories={data.categories}
+          onAdd={(extra) => setData((d) => addExtra(d, ym, extra))}
+        />
       </section>
     </>
   )

@@ -6,7 +6,7 @@
 //   incomes:  [{ id, name, frequency, startDate, amounts, endMonth? }]   // same schedule as expenses
 //   categories: [{ id, name }]
 //   actuals:  { 'YYYY-MM': { [expenseId]: number } }
-//   extras:   { 'YYYY-MM': [{ id, name, amount }] }   // unplanned spending
+//   extras:   { 'YYYY-MM': [{ id, name, amount, categoryIds? }] }   // unplanned spending
 
 const DAY_MS = 86400000
 const pad = (n) => String(n).padStart(2, '0')
@@ -175,18 +175,32 @@ export const UNCATEGORIZED = 'uncategorized'
 
 export const activeExpenses = (data) => data.expenses.filter((e) => !e.endMonth)
 
-function inCategories(expense, selected) {
+/** Works for expenses and unplanned spending, which both carry categoryIds. */
+function inCategories(item, selected) {
   if (selected.length === 0) return true
-  const ids = expense.categoryIds ?? []
+  const ids = item.categoryIds ?? []
   if (ids.length === 0) return selected.includes(UNCATEGORIZED)
   return ids.some((id) => selected.includes(id))
+}
+
+/** One month's totals for the expenses and unplanned spending in `selected`. */
+function spendingIn(summary, selected) {
+  const rows = summary.rows.filter((r) => inCategories(r.expense, selected))
+  const entered = rows.filter((r) => r.actual !== null)
+  const extras = summary.extras.filter((x) => inCategories(x, selected))
+  const extrasTotal = extras.reduce((sum, x) => sum + x.amount, 0)
+  return {
+    planned: round(rows.reduce((sum, r) => sum + r.planned, 0)),
+    actual: round(entered.reduce((sum, r) => sum + r.actual, 0) + extrasTotal),
+    difference: round(entered.reduce((sum, r) => sum + r.difference, 0) - extrasTotal),
+    entered: entered.length + extras.length,
+  }
 }
 
 /**
  * Totals for active expenses in any of the selected categories, biggest first.
  * Nothing selected means everything. Each expense counts once, however many of
- * the selected categories it is in. Unplanned spending has no category, so it is
- * left out of `month`.
+ * the selected categories it is in. `month` also includes unplanned spending.
  */
 export function analyzeExpenses(data, selected, nowYm) {
   const names = new Map(data.categories.map((c) => [c.id, c.name]))
@@ -202,22 +216,26 @@ export function analyzeExpenses(data, selected, nowYm) {
     }))
     .sort((a, b) => b.perMonth - a.perMonth || a.expense.name.localeCompare(b.expense.name))
 
-  const monthRows = monthSummary(data, nowYm).rows.filter((r) => inCategories(r.expense, selected))
-  const entered = monthRows.filter((r) => r.actual !== null)
-
   return {
     rows,
     total: round(sumPerMonth(matching)),
     overall: round(sumPerMonth(active)),
     perYear: round(sumPerMonth(matching) * 12),
     biggest: rows[0] ?? null,
-    month: {
-      planned: round(monthRows.reduce((sum, r) => sum + r.planned, 0)),
-      actual: round(entered.reduce((sum, r) => sum + r.actual, 0)),
-      difference: round(entered.reduce((sum, r) => sum + r.difference, 0)),
-      entered: entered.length,
-    },
+    month: spendingIn(monthSummary(data, nowYm), selected),
   }
+}
+
+/**
+ * Planned and actual per category for a month, biggest plan first. Anything in two
+ * categories counts in both, so the rows can add up to more than the month's total.
+ */
+export function categoryBreakdown(data, ym) {
+  const summary = monthSummary(data, ym)
+  return [...data.categories, { id: UNCATEGORIZED, name: 'Uncategorized' }]
+    .map(({ id, name }) => ({ id, name, ...spendingIn(summary, [id]) }))
+    .filter((row) => row.planned > 0 || row.entered > 0)
+    .sort((a, b) => b.planned - a.planned || a.name.localeCompare(b.name))
 }
 
 // ---- updates (each returns new data) ----
@@ -318,15 +336,18 @@ export function renameCategory(data, id, name) {
   }
 }
 
-/** Also takes the category off every expense that has it. */
+/** Also takes the category off every expense and unplanned item that has it. */
 export function removeCategory(data, id) {
+  const without = (item) =>
+    item.categoryIds?.includes(id)
+      ? { ...item, categoryIds: item.categoryIds.filter((c) => c !== id) }
+      : item
   return {
     ...data,
     categories: data.categories.filter((c) => c.id !== id),
-    expenses: data.expenses.map((e) =>
-      e.categoryIds?.includes(id)
-        ? { ...e, categoryIds: e.categoryIds.filter((c) => c !== id) }
-        : e,
+    expenses: data.expenses.map(without),
+    extras: Object.fromEntries(
+      Object.entries(data.extras).map(([ym, extras]) => [ym, extras.map(without)]),
     ),
   }
 }
@@ -366,8 +387,15 @@ export function markDueAsPlanned(data, ym, today) {
   )
 }
 
-export function addExtra(data, ym, { name, amount }, id = crypto.randomUUID()) {
-  const extras = [...(data.extras[ym] ?? []), { id, name, amount }]
+export function addExtra(data, ym, { name, amount, categoryIds = [] }, id = crypto.randomUUID()) {
+  const extras = [...(data.extras[ym] ?? []), { id, name, amount, categoryIds }]
+  return { ...data, extras: { ...data.extras, [ym]: extras } }
+}
+
+export function toggleExtraCategory(data, ym, id, categoryId) {
+  const extras = (data.extras[ym] ?? []).map((x) =>
+    x.id === id ? { ...x, categoryIds: toggleCategoryId(x.categoryIds ?? [], categoryId) } : x,
+  )
   return { ...data, extras: { ...data.extras, [ym]: extras } }
 }
 
