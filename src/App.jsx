@@ -5,20 +5,32 @@ import ExpensesView from './ExpensesView.jsx'
 import HistoryView from './HistoryView.jsx'
 import IncomeView from './IncomeView.jsx'
 import MonthView from './MonthView.jsx'
+import SignIn from './SignIn.jsx'
+import { signOutUser, useAuth } from './useAuth.js'
 import { useBudgetData } from './useBudgetData.js'
 
 const TABS = ['Month', 'Expenses', 'Income', 'Analysis', 'History']
 
 const SAVE_LABELS = { saving: 'Saving…', saved: 'Saved', error: 'Not saved' }
 
-export default function App() {
-  const { data, setData, status } = useBudgetData()
+const LOAD_MESSAGES = {
+  error: 'Could not reach the database.',
+  denied: 'This Google account does not have access to this budget.',
+}
+
+function Budget() {
+  const { data, setData, status, flush } = useBudgetData()
   const [tab, setTab] = useState('Month')
   const [ym, setYm] = useState(currentYm)
 
   const openMonth = (month) => {
     setYm(month)
     setTab('Month')
+  }
+
+  const leave = async () => {
+    await flush()
+    await signOutUser()
   }
 
   return (
@@ -28,6 +40,9 @@ export default function App() {
         <span className={status === 'error' ? 'save-status over' : 'save-status'} role="status">
           {SAVE_LABELS[status]}
         </span>
+        <button className="link small" onClick={leave}>
+          Sign out
+        </button>
         <nav>
           {TABS.map((name) => (
             <button
@@ -44,7 +59,7 @@ export default function App() {
 
       {data === null ? (
         <main className="card empty">
-          {status === 'error' ? 'Could not reach the database.' : 'Loading…'}
+          {LOAD_MESSAGES[status] ?? 'Loading…'}
         </main>
       ) : (
         <main>
@@ -66,4 +81,10 @@ export default function App() {
       )}
     </div>
   )
+}
+
+export default function App() {
+  const user = useAuth()
+  if (user === undefined) return <main className="app card empty">Loading…</main>
+  return user ? <Budget /> : <SignIn />
 }

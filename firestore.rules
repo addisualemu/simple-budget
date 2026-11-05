@@ -1,9 +1,11 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // No sign-in: anyone with the project config can use this one document.
+    // Only the owner's Google account can use the budget. Everything else stays closed.
     match /budgets/main {
-      allow read, write: if true;
+      allow read, write: if request.auth != null
+        && request.auth.token.email == 'addisudamena49@gmail.com'
+        && request.auth.token.email_verified == true;
     }
   }
 }

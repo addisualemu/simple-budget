@@ -1,20 +1,10 @@
-import { initializeApp } from 'firebase/app'
-import { doc, getFirestore, onSnapshot, setDoc } from 'firebase/firestore'
+import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { emptyData } from './budget.js'
-
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
-}
+import { db } from './firebase.js'
 
 // The whole budget is one document. It stays far below Firestore's 1 MiB limit.
-const budgetDoc = doc(getFirestore(initializeApp(firebaseConfig)), 'budgets', 'main')
+const budgetDoc = doc(db, 'budgets', 'main')
 
 const SAVE_DELAY_MS = 500
 const OLD_STORAGE_KEY = 'budget-data'
@@ -27,7 +17,8 @@ function localData() {
 
 /**
  * Loads the budget and keeps it in sync with Firestore, so other devices see
- * changes live. status is 'loading', 'saved', 'saving' or 'error'.
+ * changes live. status is 'loading', 'saved', 'saving', 'error' or 'denied'.
+ * `flush` saves any edit still waiting on the save delay.
  */
 export function useBudgetData() {
   const [data, setDataState] = useState(null)
@@ -82,7 +73,7 @@ export function useBudgetData() {
         },
         (error) => {
           console.error('Could not load budget', error)
-          setStatus('error')
+          setStatus(error.code === 'permission-denied' ? 'denied' : 'error')
         },
       ),
     [setData],
@@ -97,5 +88,9 @@ export function useBudgetData() {
     return () => document.removeEventListener('visibilitychange', flush)
   }, [save])
 
-  return { data, setData, status }
+  const flush = useCallback(async () => {
+    if (timer.current) await save()
+  }, [save])
+
+  return { data, setData, status, flush }
 }

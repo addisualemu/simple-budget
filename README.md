@@ -16,6 +16,8 @@ Then open http://localhost:5173. Run the logic tests with `npm test`.
 - **Expenses**: your known expenses, plus backup export and import.
 - **History**: the difference for the last 12 months.
 
+Sign-in is with Google, and `firestore.rules` allows only the owner's account.
+
 Data is stored in Firestore as one document, `budgets/main`, in the Firebase project
 `budget-ac996`. Deploy the site and database rules with `npm run deploy`. Budget rules live in
 `src/budget.js`. To change the currency, edit the formatters at the bottom of that file.
